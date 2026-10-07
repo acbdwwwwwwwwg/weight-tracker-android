@@ -1,8 +1,0 @@
-1. 备份你当前仓库。
-2. 替换 weight_tracker_android_project/weight_tracker_android/main.py
-3. 替换 weight_tracker_android_project/weight_tracker_android/storage.py
-4. 替换 weight_tracker_android_project/weight_tracker_android/buildozer.spec
-5. 复制 fonts/NotoSansCJKsc-Regular.ttf
-6. 保留 .github/workflows/build-apk.yml 中 Run #11 已验证的 Java 17 / JAVA_HOME 设置。
-7. 提交到 main，等待新的 Actions Run。
-8. 首先检查 Build APK 和 Upload APK；成功后安装 APK 测试日历、健身和照片功能。
