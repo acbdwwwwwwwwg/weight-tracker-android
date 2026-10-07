@@ -13,8 +13,8 @@ android.api = 35
 android.minapi = 24
 android.archs = arm64-v8a
 
-p4a.branch = master
-p4a.commit = 58d2114
+p4a.branch = develop
+p4a.commit = 94ffd5f31d816414ad1fe66c0fe587c61daac757
 
 android.permissions = READ_MEDIA_IMAGES,READ_MEDIA_VIDEO,READ_MEDIA_AUDIO
 android.allow_backup = True
