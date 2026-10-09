@@ -18,7 +18,10 @@ from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 
-from services.android_bridge import ANDROID_AVAILABLE, android_activity, autoclass, cast, jarray, PHOTO_PICK_REQUEST
+from services.android_bridge import (
+    ANDROID_AVAILABLE, ANDROID_IMPORT_ERROR, IS_ANDROID, android_activity,
+    autoclass, cast, get_current_activity, copy_uri_to_path, PHOTO_PICK_REQUEST,
+)
 from ui.theme import (BG, CARD, CARD_ALT, CARD_DARK, FIELD_BG, FONT_NAME, GREEN, GREEN_DARK,
                       LINE_COLOR, MUTED, PRIMARY, PRIMARY_DARK, PURPLE, SURFACE, SURFACE_DOWN,
                       TEXT, WHITE)
@@ -361,8 +364,12 @@ class CalendarFeatureMixin:
         self.info("没有照片", f"{date_text} 暂无体型照片。")
 
     def add_body_photo(self, *_):
-        if not ANDROID_AVAILABLE:
+        if not IS_ANDROID:
             self.info("仅支持 Android", "照片选择器需要在 Android APK 中使用。")
+            return
+        if not ANDROID_AVAILABLE:
+            detail = ANDROID_IMPORT_ERROR or "Android 桥接接口初始化失败。"
+            self.info("Android 接口初始化失败", detail)
             return
         self._photo_pending_date = self.calendar_selected_date.isoformat()
         try:
@@ -415,24 +422,16 @@ class CalendarFeatureMixin:
         try:
             base = Path(self.user_data_dir) / "body_photos"
             base.mkdir(parents=True, exist_ok=True)
-            current_activity = cast("android.app.Activity", autoclass("org.kivy.android.PythonActivity").mActivity)
+            current_activity = get_current_activity()
             resolver = current_activity.getContentResolver()
             mime = resolver.getType(uri) or "image/jpeg"
             ext = mimetypes.guess_extension(str(mime)) or ".jpg"
             if ext == ".jpe":
                 ext = ".jpg"
             target = base / f"{date_text.replace('-', '')}_{datetime.now():%H%M%S}_{uuid4().hex[:8]}{ext}"
-            input_stream = resolver.openInputStream(uri)
-            if input_stream is None:
-                raise ValueError("无法读取所选照片")
-            buffer = jarray("b", [0] * 65536)
-            with open(target, "wb") as output:
-                while True:
-                    n = input_stream.read(buffer)
-                    if n is None or int(n) <= 0:
-                        break
-                    output.write(bytes((int(value) & 0xFF) for value in buffer[: int(n)]))
-            input_stream.close()
+            copied_bytes = copy_uri_to_path(uri, target)
+            if copied_bytes <= 0:
+                raise ValueError("所选照片为空或无法读取")
             self.storage.add_body_photo(date_text, target)
             self.refresh_calendar_photo_data(preferred_date=date_text)
             self.render_calendar()
