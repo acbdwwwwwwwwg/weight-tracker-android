@@ -165,38 +165,95 @@ class CalendarFeatureMixin:
             self.photo_count_label.text = f"当天 {count} 张照片 · 照片会出现在体型时间线中"
 
     def add_body_photo(self, *_):
+        """Open Android's image picker, falling back to the document picker."""
         if not IS_ANDROID:
-            self.info("需要 Android APK", f"照片选择器仅在 Android APK 中可用。\n\n当前环境：{ANDROID_IMPORT_ERROR or '非 Android'}")
+            self.info(
+                "需要 Android APK",
+                f"照片选择器仅在 Android APK 中可用。\n\n当前环境：{ANDROID_IMPORT_ERROR or '非 Android'}",
+            )
             return
         if not ANDROID_AVAILABLE:
-            self.info("Android 照片接口未初始化", ANDROID_IMPORT_ERROR or "请检查 Android 桥接配置后重新打包。")
+            self.info(
+                "Android 照片接口未初始化",
+                ANDROID_IMPORT_ERROR or "请检查 Android 桥接配置后重新打包。",
+            )
             return
+
         if getattr(self, "current_screen", None) == "calendar":
             self._photo_pending_date = self.calendar_selected_date.isoformat()
         else:
-            self._photo_pending_date = getattr(self, "progress_filter_date", None) or datetime.now().date().isoformat()
+            self._photo_pending_date = (
+                getattr(self, "progress_filter_date", None)
+                or datetime.now().date().isoformat()
+            )
+
+        sdk_int = 0
+        picker_error = None
         try:
             try:
                 android_activity.unbind(on_activity_result=self.on_activity_result)
             except Exception:
                 pass
             android_activity.bind(on_activity_result=self.on_activity_result)
+
             Intent = autoclass("android.content.Intent")
-            Build = autoclass("android.os.Build")
             activity = get_current_activity()
-            if int(Build.VERSION.SDK_INT) >= 33:
-                intent = Intent("android.provider.action.PICK_IMAGES")
-            else:
+
+            # Build.VERSION is a Java inner class. PyJNIus must load it by its
+            # binary name (Build$VERSION), not Build.VERSION.
+            try:
+                BuildVersion = autoclass("android.os.Build$VERSION")
+                sdk_int = int(BuildVersion.SDK_INT)
+            except Exception:
+                # If version lookup fails, use the broadly supported document picker.
+                sdk_int = 0
+
+            # Prefer the system Photo Picker on Android 13+; if an OEM image
+            # picker cannot resolve this action, fall back instead of failing.
+            if sdk_int >= 33:
+                try:
+                    intent = Intent("android.provider.action.PICK_IMAGES")
+                    intent.setType("image/*")
+                    activity.startActivityForResult(intent, PHOTO_PICK_REQUEST)
+                    return
+                except Exception as exc:
+                    picker_error = f"系统照片选择器：{type(exc).__name__}: {exc}"
+
+            # ACTION_OPEN_DOCUMENT works on the supported min API and grants
+            # access to the selected URI, which is copied into app-private storage.
+            try:
                 intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
                 intent.addCategory(Intent.CATEGORY_OPENABLE)
-            intent.setType("image/*")
-            activity.startActivityForResult(intent, PHOTO_PICK_REQUEST)
+                intent.setType("image/*")
+                activity.startActivityForResult(intent, PHOTO_PICK_REQUEST)
+                return
+            except Exception as document_exc:
+                document_error = f"系统文件选择器：{type(document_exc).__name__}: {document_exc}"
+
+            # Some OEM ROMs have an incomplete document-provider setup.
+            try:
+                intent = Intent(Intent.ACTION_GET_CONTENT)
+                intent.addCategory(Intent.CATEGORY_OPENABLE)
+                intent.setType("image/*")
+                activity.startActivityForResult(intent, PHOTO_PICK_REQUEST)
+                return
+            except Exception as content_exc:
+                content_error = f"备用图库选择器：{type(content_exc).__name__}: {content_exc}"
+                details = "\n\n".join(
+                    part for part in (picker_error, document_error, content_error) if part
+                )
+                raise RuntimeError(details) from content_exc
         except Exception as exc:
             try:
                 android_activity.unbind(on_activity_result=self.on_activity_result)
             except Exception:
                 pass
-            self.info("打开照片选择器失败", f"{type(exc).__name__}: {exc}")
+            details = f"{type(exc).__name__}: {exc}"
+            self.info(
+                "打开照片选择器失败",
+                f"无法启动系统图片选择器（Android API {sdk_int or '未知'}）。\n\n"
+                f"{details}\n\n请确认手机的系统相册或文件选择器可用，然后重试。",
+            )
 
     def on_activity_result(self, request_code, result_code, intent):
         if int(request_code) != PHOTO_PICK_REQUEST:
