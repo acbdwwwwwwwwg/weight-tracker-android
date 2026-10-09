@@ -124,13 +124,34 @@ class SettingsFeatureMixin:
             self.info("删除失败", str(e))
 
     def info(self, title, message):
-        Popup(
+        """Show a wrapped, dark-themed message dialog with a clear dismissal action."""
+        from ui.theme import CARD
+
+        body = BoxLayout(orientation="vertical", padding=(dp(16), dp(14)), spacing=dp(12))
+        message_label = Label(
+            text=str(message),
+            color=TEXT,
+            font_name=FONT_NAME,
+            halign="left",
+            valign="middle",
+            size_hint_y=1,
+        )
+        message_label.bind(
+            width=lambda widget, width: setattr(widget, "text_size", (max(1, width), None))
+        )
+        body.add_widget(message_label)
+
+        popup = Popup(
             title=title,
             title_font=FONT_NAME,
             title_color=TEXT,
-            content=Label(text=message, color=TEXT, font_name=FONT_NAME),
-            size_hint=(.88, None),
-            height=dp(210),
-            background="",
+            content=body,
+            size_hint=(.90, None),
+            height=dp(250),
+            background="atlas://data/images/defaulttheme/modalview-background",
+            background_color=CARD,
             separator_color=(0, 0, 0, 0),
-        ).open()
+            auto_dismiss=True,
+        )
+        body.add_widget(self.button("知道了", lambda *_: popup.dismiss(), 44, tone="primary"))
+        popup.open()
