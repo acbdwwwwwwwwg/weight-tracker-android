@@ -1,0 +1,203 @@
+"""Home screen: the fastest path to daily weight and workout entry."""
+from datetime import datetime, timedelta
+
+from kivy.metrics import dp
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.label import Label
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.widget import Widget
+
+from ui.theme import (BG, CARD, CARD_ALT, FIELD_BG, FONT_NAME, GREEN, GREEN_DARK,
+                      MUTED, PRIMARY, PRIMARY_DARK, PURPLE, SURFACE, SURFACE_DOWN,
+                      TEXT, WHITE)
+from ui.widgets import PlotWidget, RoundedButton, RoundedPanel
+
+
+class HomeScreenMixin:
+    """Build reusable home UI; data/CRUD actions remain in feature mixins."""
+
+    def build_home_screen(self):
+        scroll = ScrollView(do_scroll_x=False, do_scroll_y=True, bar_width=dp(3),
+                            scroll_type=["bars", "content"])
+        content = BoxLayout(orientation="vertical", padding=(dp(14), dp(14), dp(14), dp(16)),
+                            spacing=dp(12), size_hint_y=None)
+        content.bind(minimum_height=content.setter("height"))
+        content.add_widget(self.build_home_header())
+        content.add_widget(self.build_today_card())
+        content.add_widget(self.build_weight_entry_card())
+        content.add_widget(self.build_stats())
+        content.add_widget(self.build_period_nav())
+        content.add_widget(self.build_home_workout_card())
+        content.add_widget(self.build_trend_card())
+        scroll.add_widget(content)
+        return scroll
+
+    def build_home_header(self):
+        panel = RoundedPanel(orientation="horizontal", padding=(dp(16), dp(11)), spacing=dp(10),
+                             size_hint_y=None, height=dp(72), panel_color=CARD)
+        brand = BoxLayout(orientation="vertical", spacing=dp(1))
+        brand.add_widget(self.label("FIT / TRACK", 10, PRIMARY, True))
+        brand.add_widget(self.label("今天，继续变强", 19, TEXT, True))
+        now = datetime.now()
+        weekday = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")[now.weekday()]
+        self.home_date_label = self.label(now.strftime("%Y年%m月%d日") + f" · {weekday}", 10, MUTED)
+        brand.add_widget(self.home_date_label)
+        panel.add_widget(brand)
+        panel.add_widget(Widget())
+        return panel
+
+    def build_today_card(self):
+        card = RoundedPanel(orientation="vertical", padding=(dp(16), dp(13)), spacing=dp(6),
+                            size_hint_y=None, height=dp(122), panel_color=CARD_ALT)
+        top = BoxLayout(size_hint_y=None, height=dp(22))
+        top.add_widget(self.label("今日体重", 13, MUTED, True))
+        top.add_widget(Widget())
+        self.home_today_hint = self.label("开始记录今天的状态", 10, MUTED)
+        top.add_widget(self.home_today_hint)
+        card.add_widget(top)
+        row = BoxLayout(orientation="horizontal", spacing=dp(8))
+        value_col = BoxLayout(orientation="vertical", spacing=dp(0))
+        value_row = BoxLayout(orientation="horizontal", spacing=dp(5), size_hint_y=None, height=dp(52))
+        self.home_today_value = self.label("待记录", 29, TEXT, True)
+        value_row.add_widget(self.home_today_value)
+        self.home_today_unit = self.label(self.weight_unit_label(), 12, MUTED)
+        value_row.add_widget(self.home_today_unit)
+        value_col.add_widget(value_row)
+        self.home_today_change = self.label("记录体重，观察自己的变化", 10, MUTED)
+        value_col.add_widget(self.home_today_change)
+        row.add_widget(value_col)
+        row.add_widget(Widget())
+        card.add_widget(row)
+        return card
+
+    def build_weight_entry_card(self):
+        card = RoundedPanel(orientation="vertical", padding=dp(13), spacing=dp(8),
+                            size_hint_y=None, height=dp(194), panel_color=CARD)
+        title = BoxLayout(size_hint_y=None, height=dp(22))
+        title.add_widget(self.label("记录体重", 14, TEXT, True))
+        title.add_widget(Widget())
+        self.home_entry_unit_label = self.label(f"单位：{self.weight_unit_label()}", 10, MUTED)
+        title.add_widget(self.home_entry_unit_label)
+        card.add_widget(title)
+
+        first = BoxLayout(spacing=dp(7), size_hint_y=None, height=dp(40))
+        self.date_input = self._field(text=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                      hint_text="日期 / 时间")
+        self.weight_input = self._field(input_filter="float", hint_text="体重")
+        first.add_widget(self._field_box(self.date_input, size_hint_x=0.65))
+        first.add_widget(self._field_box(self.weight_input, size_hint_x=0.35))
+        card.add_widget(first)
+
+        second = BoxLayout(spacing=dp(7), size_hint_y=None, height=dp(42))
+        self.note_input = self._field(hint_text="备注（可不填）")
+        save = self.button("保存记录", self.save_record, 42, tone="primary")
+        save.size_hint_x = None
+        save.width = dp(104)
+        second.add_widget(self._field_box(self.note_input))
+        second.add_widget(save)
+        card.add_widget(second)
+
+        scroll = ScrollView(size_hint_y=None, height=dp(40), do_scroll_x=True, do_scroll_y=False,
+                            bar_width=dp(2), scroll_type=["bars", "content"])
+        quick = BoxLayout(size_hint_x=None, width=dp(644), spacing=dp(6))
+        quick.add_widget(self.label("快捷", 10, MUTED, True))
+        self.weight_quick_buttons = []
+        for title_text, delta in [("−1", -1), ("−0.5", -0.5), ("上次体重", 0), ("+0.5", 0.5), ("+1", 1)]:
+            display_title = title_text if title_text == "上次体重" else f"{title_text}{self.weight_unit_label()}"
+            btn = self.button(display_title, lambda _, d=delta: self.quick_weight(d), 38, tone="soft")
+            self.weight_quick_buttons.append((btn, title_text, delta))
+            btn.size_hint_x = None
+            btn.width = dp(78 if title_text == "上次体重" else 68)
+            quick.add_widget(btn)
+        for note in ("晨起", "运动后", "睡前"):
+            btn = self.button(note, lambda _, n=note: self.set_note(n), 38, tone="success")
+            btn.size_hint_x = None
+            btn.width = dp(62)
+            quick.add_widget(btn)
+        scroll.add_widget(quick)
+        card.add_widget(scroll)
+        return card
+
+    def build_stats(self):
+        self.stats = {}
+        card = RoundedPanel(orientation="vertical", padding=(dp(12), dp(10)), spacing=dp(5),
+                            size_hint_y=None, height=dp(104), panel_color=CARD)
+        card.add_widget(self.label("近期概览", 12, MUTED, True))
+        grid = GridLayout(cols=5, spacing=dp(3), size_hint_y=None, height=dp(60))
+        self.stat_titles = {}
+        for key, title in [("avg", f"均值{self.weight_unit_label()}"), ("max", f"最高{self.weight_unit_label()}"), ("min", f"最低{self.weight_unit_label()}"),
+                           ("diff", f"日均变{self.weight_unit_label()}"), ("bmi", "当前BMI")]:
+            cell = BoxLayout(orientation="vertical", spacing=dp(2))
+            title_label = self.label(title, 9, MUTED)
+            self.stat_titles[key] = title_label
+            cell.add_widget(title_label)
+            value = self.label("--", 14, PURPLE, True)
+            self.stats[key] = value
+            cell.add_widget(value)
+            grid.add_widget(cell)
+        card.add_widget(grid)
+        return card
+
+    def build_period_nav(self):
+        row = RoundedPanel(orientation="horizontal", padding=(dp(8), dp(6)), spacing=dp(7),
+                           size_hint_y=None, height=dp(50), panel_color=CARD)
+        left = self.button("‹", self.prev_period, 38, tone="soft")
+        left.size_hint_x = None
+        left.width = dp(42)
+        row.add_widget(left)
+        self.range_label = self.label("", 10, TEXT, True)
+        row.add_widget(self.range_label)
+        right = self.button("›", self.next_period, 38, tone="soft")
+        right.size_hint_x = None
+        right.width = dp(42)
+        row.add_widget(right)
+        today = self.button("今天", self.today, 38, tone="primary")
+        today.size_hint_x = None
+        today.width = dp(60)
+        row.add_widget(today)
+        return row
+
+    def build_home_workout_card(self):
+        card = RoundedPanel(orientation="vertical", padding=(dp(13), dp(11)), spacing=dp(7),
+                            size_hint_y=None, height=dp(98), panel_color=CARD)
+        row = BoxLayout(size_hint_y=None, height=dp(20))
+        row.add_widget(self.label("今天的训练", 13, TEXT, True))
+        row.add_widget(Widget())
+        self.home_workout_status = self.label("还没打卡", 11, MUTED, True)
+        row.add_widget(self.home_workout_status)
+        card.add_widget(row)
+        actions = BoxLayout(spacing=dp(7), size_hint_y=None, height=dp(42))
+        self.home_workout_button = self.button("✓  完成健身打卡", self.toggle_today_workout, 42, tone="success")
+        actions.add_widget(self.home_workout_button)
+        actions.add_widget(self.button("查看日历", lambda *_: self.navigate_to("calendar"), 42, tone="secondary"))
+        actions.add_widget(self.button("体型照片", self.open_progress_home, 42, tone="secondary"))
+        card.add_widget(actions)
+        log_actions = BoxLayout(spacing=dp(7), size_hint_y=None, height=dp(38))
+        log_actions.add_widget(self.button("记录饮食热量", lambda *_: self.navigate_to("journal"), 38, tone="soft"))
+        log_actions.add_widget(self.button("力量训练日志", lambda *_: self.navigate_to("journal"), 38, tone="soft"))
+        card.height += dp(42)
+        card.add_widget(log_actions)
+        return card
+
+    def build_trend_card(self):
+        card = RoundedPanel(orientation="vertical", padding=(dp(6), dp(7)), spacing=dp(5),
+                            size_hint_y=None, height=dp(296), panel_color=CARD)
+        head = BoxLayout(size_hint_y=None, height=dp(28), padding=(dp(8), 0))
+        self.trend_title_label = self.label("体重趋势", 14, TEXT, True)
+        head.add_widget(self.trend_title_label)
+        head.add_widget(Widget())
+        head.add_widget(self.label("点击日期点查看当天记录", 10, MUTED))
+        card.add_widget(head)
+        self.plot = PlotWidget(size_hint_y=None, height=dp(244), on_point=self.edit_record)
+        card.add_widget(self.plot)
+        return card
+
+    def toggle_today_workout(self, *_):
+        self.calendar_selected_date = datetime.now().date()
+        self.storage.set_workout(self.calendar_selected_date.isoformat(),
+                                 not self.storage.get_workout(self.calendar_selected_date.isoformat()))
+        self.refresh_home_summary()
+        if getattr(self, "calendar_grid", None) is not None:
+            self.render_calendar()
+            self.refresh_calendar_photo_data(preferred_date=self.calendar_selected_date)
